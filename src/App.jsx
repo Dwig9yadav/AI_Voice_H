@@ -96,8 +96,6 @@ export default function App() {
 
           {activePanel === 'settings' && (
             <SettingsPanel
-              apiKey={ross.apiKey}
-              onApiKeyChange={ross.updateApiKey}
               selectedVoice={ross.selectedVoice}
               onVoiceChange={ross.changeVoice}
               deviceProfile={ross.deviceProfile}

@@ -1,73 +1,14 @@
-import { useState } from 'react';
-import { TTS_VOICES, AI_MODES } from '../../config/models.js';
+import { AI_MODES } from '../../config/models.js';
 import { performanceEngine } from '../../engines/PerformanceEngine.js';
-import { Key, Volume2, Cpu, Zap, ChevronRight } from 'lucide-react';
+import { Cpu, Zap, ChevronRight } from 'lucide-react';
 
-export default function SettingsPanel({ apiKey, onApiKeyChange, selectedVoice, onVoiceChange, deviceProfile, wakeWordEnabled, onWakeWordToggle }) {
-  const [keyInput, setKeyInput] = useState(apiKey || '');
-  const [showKey, setShowKey] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  const allVoices = [
-    ...TTS_VOICES.ELEVENLABS,
-    ...TTS_VOICES.ORPHEUS_EN,
-    ...TTS_VOICES.ORPHEUS_AR,
-  ];
-
-  function saveKey() {
-    onApiKeyChange(keyInput.trim());
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }
+export default function SettingsPanel({ deviceProfile, wakeWordEnabled, onWakeWordToggle }) {
 
   const profile = deviceProfile;
 
   return (
     <div style={{ padding: 24, height: '100%', overflowY: 'auto' }}>
       <h2 style={{ fontFamily: 'Orbitron, monospace', fontSize: '1.1rem', fontWeight: 700, color: '#c4b5fd', marginBottom: 24 }}>Settings</h2>
-
-      {/* API Key */}
-      <div className="settings-section">
-        <div className="settings-title"><Key size={12} style={{ display: 'inline', marginRight: 6 }} />Groq API Key</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            className="settings-input"
-            type={showKey ? 'text' : 'password'}
-            value={keyInput}
-            onChange={e => setKeyInput(e.target.value)}
-            placeholder="gsk_…"
-            style={{ flex: 1 }}
-          />
-          <button onClick={() => setShowKey(p => !p)} style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.25)', borderRadius: 10, padding: '0 12px', color: '#9d91c4', cursor: 'pointer', fontSize: '0.75rem', fontFamily: 'Syne, sans-serif', whiteSpace: 'nowrap' }}>
-            {showKey ? 'Hide' : 'Show'}
-          </button>
-          <button onClick={saveKey} style={{ background: saved ? 'rgba(16,185,129,0.2)' : 'rgba(124,58,237,0.2)', border: `1px solid ${saved ? 'rgba(16,185,129,0.4)' : 'rgba(124,58,237,0.4)'}`, borderRadius: 10, padding: '0 14px', color: saved ? '#6ee7b7' : '#c4b5fd', cursor: 'pointer', fontSize: '0.82rem', fontFamily: 'Syne, sans-serif', whiteSpace: 'nowrap' }}>
-            {saved ? '✓ Saved' : 'Save'}
-          </button>
-        </div>
-        <p style={{ fontSize: '0.73rem', color: '#7c6aad', marginTop: 8 }}>Get your key at <a href="https://console.groq.com" target="_blank" rel="noreferrer" style={{ color: '#67e8f9' }}>console.groq.com</a></p>
-      </div>
-
-      {/* Voice Selection */}
-      <div className="settings-section">
-        <div className="settings-title"><Volume2 size={12} style={{ display: 'inline', marginRight: 6 }} />TTS Voice</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
-          {allVoices.map(v => {
-            const isSelected = selectedVoice?.id === v.id;
-            return (
-              <button key={v.id} onClick={() => onVoiceChange(v)} style={{
-                background: isSelected ? 'rgba(124,58,237,0.2)' : 'rgba(10,5,40,0.8)',
-                border: `1px solid ${isSelected ? 'rgba(124,58,237,0.6)' : 'rgba(124,58,237,0.15)'}`,
-                borderRadius: 10, padding: '10px 12px', color: isSelected ? '#c4b5fd' : '#9d91c4',
-                cursor: 'pointer', textAlign: 'left', fontFamily: 'Syne, sans-serif',
-              }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 2 }}>{v.name}</div>
-                <div style={{ fontSize: '0.7rem', color: '#7c6aad' }}>{v.provider} · {v.gender}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
       {/* Wake Word */}
       <div className="settings-section">
