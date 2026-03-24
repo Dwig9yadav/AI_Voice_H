@@ -2,7 +2,7 @@
 // ROSS AI — Model Configuration
 // ============================================================
 
-export const GROQ_API_KEY = 'gsk_XXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+export const GROQ_API_KEY = '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';
 
 export const MODELS = {
   COMPLEX: 'moonshotai/kimi-k2-instruct',
