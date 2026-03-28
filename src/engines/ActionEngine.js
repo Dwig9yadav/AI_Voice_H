@@ -1119,18 +1119,68 @@ class ActionEngine {
     return { success: false, message: 'Unsupported compound step.' };
   }
 
+  _optimizeCompoundSteps(steps) {
+    // Skip redundant "open" steps when immediately followed by a media/maps action on the same platform
+    const optimized = [];
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const nextStep = steps[i + 1];
+
+      // If this is an "open" step followed by a media action on the same platform, skip it
+      if (
+        step.type === 'open' &&
+        nextStep &&
+        (nextStep.type === 'media' || nextStep.type === 'maps' || nextStep.type === 'search')
+      ) {
+        const openTarget = this._normalizePlatform(step.target);
+        const nextPlatform = nextStep.platform
+          ? this._normalizePlatform(nextStep.platform)
+          : this._normalizePlatform(step.target);
+
+        // Skip this open step if the next step targets the same platform
+        if (
+          openTarget === nextPlatform ||
+          (openTarget === 'youtube' && nextPlatform === 'youtube') ||
+          (openTarget === 'spotify' && nextPlatform === 'spotify') ||
+          (openTarget === 'maps' && nextStep.type === 'maps')
+        ) {
+          continue; // Skip this step
+        }
+      }
+
+      optimized.push(step);
+    }
+    return optimized;
+  }
+
   executeCompoundCommand(text) {
     const steps = this.parseCompoundCommand(text);
     if (!steps) return null;
 
-    const results = steps.map(step => this._runCompoundStep(step));
-    const ok = results.filter(r => r?.success);
-    if (ok.length === 0) return null;
+    // Optimize steps: skip redundant "open" calls
+    const optimized = this._optimizeCompoundSteps(steps);
+    if (optimized.length === 0) return null;
 
+    // Execute steps with staggered delays to allow pages to load
+    optimized.forEach((step, index) => {
+      setTimeout(() => {
+        this._runCompoundStep(step);
+      }, index * 500); // 500ms delay between steps ensures page load time
+    });
+
+    // Return immediate success result (steps execute in background with delays)
     return {
       success: true,
-      message: `✅ Executed ${ok.length}/${results.length} actions: ${ok.map(r => r.message.replace(/^✅\s*/, '')).join(' • ')}`,
-      steps: results,
+      message: `✅ Executing ${optimized.length} actions: ${optimized
+        .map(s => {
+          if (s.type === 'open') return `Opening ${s.target}`;
+          if (s.type === 'media') return `Playing ${s.query}`;
+          if (s.type === 'maps') return `Finding ${s.query}`;
+          if (s.type === 'search') return `Searching ${s.query}`;
+          return s.type;
+        })
+        .join(' • ')}`,
+      steps: optimized,
       multiAction: true,
     };
   }
