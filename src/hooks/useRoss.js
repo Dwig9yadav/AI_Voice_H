@@ -349,6 +349,16 @@ export function useRoss() {
   // ── § 4  SYNC PRE-CLASSIFY ROUTER ───────────────────────────
   // Runs BEFORE any await so anchor clicks are never blocked.
   function _trySyncAction(userText, emotion) {
+    // 0. Natural-language multi-action sentence handling
+    const combo = actionEngine.executeCompoundCommand(userText);
+    if (combo?.success) {
+      _actionMsg(combo.message, emotion);
+      voiceEngine.speak('Done. I executed your requested actions.', 'en', () => setIsSpeaking(true), () => setIsSpeaking(false));
+      _trackIntent('MULTI_ACTION');
+      setSessionStats(s => ({ ...s, actionsTriggered: s.actionsTriggered + (combo.steps?.length || 1) }));
+      return true;
+    }
+
     // 1. Multi-site
     const multi = actionEngine.detectMultipleSites(userText);
     if (multi) {
@@ -361,24 +371,7 @@ export function useRoss() {
       return true;
     }
 
-    // 2. Direct navigation "open X"
-    const navM = userText.match(/^(?:open|launch|go\s+to|navigate\s+to|visit|load|take\s+me\s+to|show\s+me|pull\s+up|bring\s+up|head\s+to)\s+(.+)/i);
-    if (navM) {
-      const target = navM[1].replace(/\s*(website|site|page|app|portal|link|url)\s*$/i, '').trim();
-      if (target && target.split(' ').length <= 4) {
-        const r = actionEngine.openWebsite(target);
-        if (r?.success) {
-          _actionMsg(r.message, emotion);
-          voiceEngine.speak(`Opening ${target}`, 'en', () => setIsSpeaking(true), () => setIsSpeaking(false));
-          _trackIntent('NAVIGATION');
-          setSessionStats(s => ({ ...s, actionsTriggered: s.actionsTriggered + 1 }));
-          _updateSuggestions('NAVIGATION', '');
-          return true;
-        }
-      }
-    }
-
-    // 3. Platform play "play X on spotify"
+    // 2. Platform play "play X on spotify"
     const pp = actionEngine.detectPlatformPlay(userText);
     if (pp) {
       let r;
@@ -392,6 +385,23 @@ export function useRoss() {
         _trackIntent('PLATFORM_PLAY');
         setSessionStats(s => ({ ...s, actionsTriggered: s.actionsTriggered + 1 }));
         return true;
+      }
+    }
+
+    // 3. Direct navigation "open X"
+    const navM = userText.match(/^(?:open|launch|go\s+to|navigate\s+to|visit|load|take\s+me\s+to|show\s+me|pull\s+up|bring\s+up|head\s+to)\s+(.+)/i);
+    if (navM) {
+      const target = navM[1].replace(/\s*(website|site|page|app|portal|link|url)\s*$/i, '').trim();
+      if (target && target.split(' ').length <= 4) {
+        const r = actionEngine.openWebsite(target);
+        if (r?.success) {
+          _actionMsg(r.message, emotion);
+          voiceEngine.speak(`Opening ${target}`, 'en', () => setIsSpeaking(true), () => setIsSpeaking(false));
+          _trackIntent('NAVIGATION');
+          setSessionStats(s => ({ ...s, actionsTriggered: s.actionsTriggered + 1 }));
+          _updateSuggestions('NAVIGATION', '');
+          return true;
+        }
       }
     }
 

@@ -1021,6 +1021,8 @@ class ActionEngine {
   // ── § E  MULTI-SITE OPENER ────────────────────────────────
   detectMultipleSites(text) {
     if (!/^(open|launch|visit|go to|load|show me|take me to)\s+/i.test(text.trim())) return null;
+    // Avoid misclassifying action chains like "open youtube and play ..." as plain multi-site lists.
+    if (/\b(?:and|then|after\s+that)\s+(?:play|listen|watch|stream|search|find|get\s+directions|navigate)\b/i.test(text)) return null;
     const stripped = text.trim()
       .replace(/^(open|launch|visit|go\s+to|load|show\s+me|take\s+me\s+to)\s+/i, '');
     const parts = stripped
@@ -1028,6 +1030,109 @@ class ActionEngine {
       .map(p => sanitizeUrl(p))
       .filter(p => p.length > 0 && !/^(me|please|now|for me)$/i.test(p));
     return parts.length >= 2 ? parts : null;
+  }
+
+  // ── § E2  COMPOUND ACTIONS ("open X and play Y") ────────
+  _normalizePlatform(platform = '') {
+    const p = platform.toLowerCase().replace(/\s+/g, '');
+    if (p === 'yt') return 'youtube';
+    if (p === 'applemusic') return 'applemusic';
+    return p;
+  }
+
+  _isMediaPlatform(target = '') {
+    return /^(youtube|yt|spotify|apple\s*music|soundcloud|deezer|tidal)$/i.test(target.trim());
+  }
+
+  _stripPolitePrefix(text = '') {
+    return text
+      .replace(/^\s*(?:please\s+)?(?:can\s+you|could\s+you|would\s+you|will\s+you)\s+/i, '')
+      .replace(/^\s*(?:i\s+want\s+you\s+to|i\s+want\s+to|i\s+need\s+to|let'?s|kindly)\s+/i, '')
+      .replace(/^\s*(?:hey\s+ross[,\s]*)/i, '')
+      .trim();
+  }
+
+  parseCompoundCommand(text) {
+    const raw = this._stripPolitePrefix(text?.trim() || '');
+    if (!raw) return null;
+
+    const parts = raw
+      .split(/\s*(?:,\s*then\s*|,\s*and\s*|;\s*|\s+(?:and\s+then|then|after\s+that|and|also|plus)\s+)\s*(?=(?:please\s+)?(?:open|launch|go\s+to|navigate\s+to|visit|load|show\s+me|take\s+me\s+to|play|listen\s+to|listen|watch|stream|search|find|get\s+directions|directions\s+to|map|open\s+maps)\b)/i)
+      .map(p => this._stripPolitePrefix(p.trim()))
+      .filter(Boolean);
+
+    if (parts.length < 2) return null;
+
+    const steps = [];
+    let activePlatform = '';
+
+    for (const part of parts) {
+      const openM = part.match(/(?:^|\b)(?:open|launch|go\s+to|navigate\s+to|visit|load|show\s+me|take\s+me\s+to)\s+(.+)/i);
+      if (openM) {
+        const target = openM[1]
+          .replace(/\s*(?:website|site|page|app|portal|url|link)$/i, '')
+          .replace(/\s+(?:and|then)\s+(?:play|listen|watch|stream|search|find).+$/i, '')
+          .replace(/[?.!]+$/, '')
+          .trim();
+        if (target) {
+          if (this._isMediaPlatform(target)) activePlatform = this._normalizePlatform(target);
+          steps.push({ type: 'open', target });
+          continue;
+        }
+      }
+
+      const mediaM = part.match(/(?:^|\b)(?:play|listen\s+to|listen|watch|stream|search\s+for|search|find)\s+(.+?)(?:\s+on\s+(spotify|youtube|yt|apple\s+music|soundcloud|deezer|tidal))?$/i);
+      if (mediaM) {
+        const query = mediaM[1].replace(/[?.!]+$/, '').trim();
+        const platform = this._normalizePlatform(mediaM[2] || activePlatform || 'youtube');
+        if (query) {
+          steps.push({ type: 'media', platform, query });
+          continue;
+        }
+      }
+
+      const mapsM = part.match(/(?:open\s+maps|map|directions\s+to|get\s+directions\s+to|navigate\s+to)\s+(.+)/i);
+      if (mapsM) {
+        steps.push({ type: 'maps', query: mapsM[1].replace(/[?.!]+$/, '').trim() });
+        continue;
+      }
+
+      const webSearchM = part.match(/(?:^|\b)(?:search|google|find|look\s+up|browse\s+for)\s+(.+)/i);
+      if (webSearchM) {
+        steps.push({ type: 'search', query: webSearchM[1].replace(/[?.!]+$/, '').trim() });
+      }
+    }
+
+    return steps.length >= 2 ? steps : null;
+  }
+
+  _runCompoundStep(step) {
+    if (step.type === 'open') return this.openWebsite(step.target);
+    if (step.type === 'maps') return this.openMaps(step.query);
+    if (step.type === 'search') return this.googleSearch(step.query);
+    if (step.type === 'media') {
+      if (step.platform === 'spotify') return this.spotifySearch(step.query);
+      if (step.platform === 'soundcloud') return this.soundcloudSearch(step.query);
+      if (step.platform === 'applemusic') return this.appleMusicSearch(step.query);
+      return this.youtubeSearch(step.query);
+    }
+    return { success: false, message: 'Unsupported compound step.' };
+  }
+
+  executeCompoundCommand(text) {
+    const steps = this.parseCompoundCommand(text);
+    if (!steps) return null;
+
+    const results = steps.map(step => this._runCompoundStep(step));
+    const ok = results.filter(r => r?.success);
+    if (ok.length === 0) return null;
+
+    return {
+      success: true,
+      message: `✅ Executed ${ok.length}/${results.length} actions: ${ok.map(r => r.message.replace(/^✅\s*/, '')).join(' • ')}`,
+      steps: results,
+      multiAction: true,
+    };
   }
 
   openMultiple(sites) {
@@ -1071,6 +1176,9 @@ class ActionEngine {
     const text = rawText?.trim() || '';
     const target = slots.target || entities.target || '';
     const query = slots.query || entities.query || target;
+
+    const combo = this.executeCompoundCommand(text);
+    if (combo?.success) return combo;
 
     // Multi-site check first
     const multi = this.detectMultipleSites(text);
