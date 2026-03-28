@@ -55,6 +55,9 @@ class WakeWordEngine {
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
+        // Ignore interim hypotheses to avoid partial-char false triggers.
+        if (!result.isFinal) continue;
+
         // Check all alternatives
         for (let j = 0; j < result.length; j++) {
           const transcript = result[j].transcript.toLowerCase().trim();
@@ -63,7 +66,8 @@ class WakeWordEngine {
             // Extract command after wake word
             let command = transcript.slice(transcript.indexOf(wakePhrase) + wakePhrase.length).trim();
             // Clean up common artifacts
-            command = command.replace(/^[,.\s]+/, '').trim();
+            command = command.replace(/^[,.;:!?\s]+/, '').replace(/[,.;:!?\s]+$/g, '').trim();
+            if (command.length < 2 || !/[a-z0-9]/i.test(command)) command = '';
             this.onWake?.(command || '');
 
             // Brief pause before restarting to avoid self-trigger from TTS/audio echo.

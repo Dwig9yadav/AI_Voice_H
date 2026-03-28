@@ -113,6 +113,23 @@ function cleanForSpeech(text) {
     .slice(0, MAX_SPEAK_CHARS);
 }
 
+function normalizeWakeCommand(text = '') {
+  const lower = String(text).toLowerCase().trim();
+  if (!lower) return '';
+
+  const withoutWake = lower.includes(WAKE_WORD)
+    ? lower.replace(WAKE_WORD, '').trim()
+    : lower;
+
+  const cleaned = withoutWake
+    .replace(/^[,.;:!?\s]+/, '')
+    .replace(/[,.;:!?\s]+$/g, '')
+    .trim();
+
+  if (cleaned.length < 2 || !/[a-z0-9]/i.test(cleaned)) return '';
+  return cleaned;
+}
+
 function getSuggestions(intent, lastResponse = '') {
   const bank = SUGGESTION_MAP[intent] || SUGGESTION_MAP.DEFAULT;
   // Shuffle and return first N
@@ -745,10 +762,8 @@ export function useRoss() {
       if (text?.trim()) {
         setTranscript(text);
         if (wakeWordRef.current) {
-          const lower = text.toLowerCase();
-          if (!lower.includes(WAKE_WORD)) return;
-          const stripped = lower.replace(WAKE_WORD, '').trim();
-          if (stripped) sendMessage(stripped);
+          const cmd = normalizeWakeCommand(text);
+          if (cmd) sendMessage(cmd);
           return;
         }
         sendMessage(text);
@@ -807,8 +822,12 @@ export function useRoss() {
       const started = wakeWordEngine.start(
         (command) => {
           _addMsg({ role: 'assistant', content: '🎙️ Wake word detected! Listening…', model: 'system' });
-          if (command) setTimeout(() => sendMessage(command), 300);
-          else setTimeout(() => startListening(), 300);
+          const cmd = normalizeWakeCommand(command);
+          if (cmd) {
+            setTimeout(() => sendMessage(cmd), 250);
+          } else if (!voiceEngine.isRecording) {
+            setTimeout(() => startListening(), 250);
+          }
         },
         (err) => setError('Wake word: ' + err)
       );
