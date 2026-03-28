@@ -7,9 +7,12 @@
 import { groqClient } from './GroqClient.js';
 import { nlpEngine } from './NLPEngine.js';
 import { MODELS, AI_MODES, routeModel } from '../config/models.js';
+import { runAnywhereEngine } from './RunAnywhereEngine.js';
 
 class LLMEngine {
   constructor() {
+    this.useLocalInference = false;
+
     // Tool definitions for function calling
     this.tools = [
       {
@@ -71,6 +74,10 @@ class LLMEngine {
         },
       },
     ];
+  }
+
+  setLocalInference(enabled) {
+    this.useLocalInference = !!enabled;
   }
 
   // ── Build context for LLM ─────────────────────────────────
@@ -154,6 +161,29 @@ CRITICAL BROWSER AUTOMATION RULES — NEVER BREAK THESE:
       language: context.language || classification.language,
     });
 
+    if (this.useLocalInference && !hasImage && runAnywhereEngine.shouldUseLocalLLM()) {
+      const systemPrompt = this.buildSystemPrompt(
+        context.mode || 'assistant',
+        context.emotion || null,
+        context.language || classification.language,
+        context.memoryContext || ''
+      );
+
+      let totalTokens = 0;
+      for await (const token of runAnywhereEngine.chatStream(userText, {
+        systemPrompt,
+        history: context.history || [],
+        mode: context.mode || 'assistant',
+        language: context.language || classification.language,
+      })) {
+        totalTokens += 1;
+        yield token;
+      }
+
+      yield { __meta: true, model: MODELS.LOCAL_CHAT, tokens: totalTokens };
+      return;
+    }
+
     // Vision requests: Groq vision doesn't support streaming — use regular chat
     if (hasImage) {
       try {
@@ -191,6 +221,22 @@ CRITICAL BROWSER AUTOMATION RULES — NEVER BREAK THESE:
       ...context,
       language: context.language || classification.language,
     });
+
+    if (this.useLocalInference && !context.imageDataUrl && runAnywhereEngine.shouldUseLocalLLM()) {
+      const systemPrompt = this.buildSystemPrompt(
+        context.mode || 'assistant',
+        context.emotion || null,
+        context.language || classification.language,
+        context.memoryContext || ''
+      );
+      const text = await runAnywhereEngine.chat(userText, {
+        systemPrompt,
+        history: context.history || [],
+        mode: context.mode || 'assistant',
+        language: context.language || classification.language,
+      });
+      return { text, model: MODELS.LOCAL_CHAT, classification };
+    }
 
     const text = await groqClient.chat(model, messages, {
       temperature: context.mode === 'developer' ? 0.3 : 0.7,
@@ -260,6 +306,13 @@ CRITICAL BROWSER AUTOMATION RULES — NEVER BREAK THESE:
       .slice(-30)
       .map(m => `${m.role === 'user' ? 'User' : 'ROSS'}: ${typeof m.content === 'string' ? m.content : '[image]'}`)
       .join('\n');
+
+    if (this.useLocalInference && runAnywhereEngine.shouldUseLocalLLM()) {
+      return await runAnywhereEngine.chat(
+        `Summarize this conversation in 2-3 sentences, capturing key topics and conclusions:\n\n${convo}`,
+        { mode: 'assistant' }
+      );
+    }
 
     return await groqClient.chat(
       MODELS.SIMPLE,

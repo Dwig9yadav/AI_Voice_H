@@ -6,6 +6,7 @@
 
 import { groqClient } from './GroqClient.js';
 import { MODELS, DEFAULT_VOICE } from '../config/models.js';
+import { runAnywhereEngine } from './RunAnywhereEngine.js';
 
 // Languages supported natively by Groq PlayAI TTS (English only)
 const GROQ_TTS_LANGUAGES = new Set(['en']);
@@ -31,6 +32,8 @@ class VoiceEngine {
     this.onWaveformUpdate = null;
     this.rafId = null;
     this.currentLanguage = 'en';
+    this.preferLocalSpeech = true;
+    this.currentAudioEl = null;
   }
 
   async initAudioContext() {
@@ -42,6 +45,7 @@ class VoiceEngine {
 
   setVoice(voice) { this.currentVoice = voice; }
   setLanguage(lang) { this.currentLanguage = lang || 'en'; }
+  setPreferLocalSpeech(enabled) { this.preferLocalSpeech = !!enabled; }
 
   selectSTTModel(blob) {
     return blob.size < 1024 * 1024 ? MODELS.STT_FAST : MODELS.STT_ACCURATE;
@@ -93,6 +97,18 @@ class VoiceEngine {
           const blob = new Blob(this.audioChunks, { type: this.mediaRecorder.mimeType || 'audio/webm' });
           this.stream?.getTracks().forEach(t => t.stop());
           if (blob.size < 1000) return resolve({ text: '', language: 'en' });
+
+          if (this.preferLocalSpeech && runAnywhereEngine.shouldUseLocalSTT()) {
+            try {
+              const localResult = await runAnywhereEngine.transcribe(blob, { language: this.currentLanguage });
+              if (localResult?.text?.trim()) {
+                return resolve(localResult);
+              }
+            } catch (err) {
+              console.warn('RunAnywhere STT failed, falling back to Groq:', err?.message || err);
+            }
+          }
+
           const model = this.selectSTTModel(blob);
           const result = await groqClient.transcribe(blob, model);
           resolve(result);
@@ -113,11 +129,84 @@ class VoiceEngine {
     const lang = language || this.currentLanguage || 'en';
     const clean = text.replace(/```[\s\S]*?```/g, ' code block ').replace(/[#*`_~\[\]]/g, '').slice(0, 600);
 
+    if (this.preferLocalSpeech && runAnywhereEngine.shouldUseLocalTTS()) {
+      try {
+        await this._localTTS(clean, lang, onStart, onEnd);
+        return;
+      } catch (err) {
+        console.warn('RunAnywhere TTS failed, falling back:', err?.message || err);
+      }
+    }
+
     if (GROQ_TTS_LANGUAGES.has(lang)) {
       await this._groqTTS(clean, onStart, onEnd);
     } else {
       this._browserTTS(clean, lang, onStart, onEnd);
     }
+  }
+
+  async _localTTS(text, lang, onStart, onEnd) {
+    await this.initAudioContext();
+    onStart?.();
+
+    const output = await runAnywhereEngine.speak(text, {
+      language: lang,
+      voice: this.currentVoice?.id,
+    });
+
+    const audio = await this._asPlayableAudio(output);
+    if (!audio) throw new Error('Local TTS returned unsupported audio payload');
+
+    this.currentAudioEl = audio;
+    audio.onended = () => {
+      this.currentAudioEl = null;
+      onEnd?.();
+    };
+    audio.onerror = () => {
+      this.currentAudioEl = null;
+      onEnd?.();
+    };
+    await audio.play();
+  }
+
+  async _asPlayableAudio(output) {
+    if (!output) return null;
+
+    if (output instanceof HTMLAudioElement) return output;
+
+    if (typeof output === 'string') {
+      if (output.startsWith('http') || output.startsWith('blob:') || output.startsWith('data:audio')) {
+        return new Audio(output);
+      }
+    }
+
+    if (output instanceof Blob) {
+      return new Audio(URL.createObjectURL(output));
+    }
+
+    if (output instanceof ArrayBuffer) {
+      const blob = new Blob([output], { type: 'audio/wav' });
+      return new Audio(URL.createObjectURL(blob));
+    }
+
+    if (output?.audio instanceof Blob) {
+      return new Audio(URL.createObjectURL(output.audio));
+    }
+
+    if (output?.audio instanceof ArrayBuffer) {
+      const blob = new Blob([output.audio], { type: 'audio/wav' });
+      return new Audio(URL.createObjectURL(blob));
+    }
+
+    if (typeof output?.audioUrl === 'string') {
+      return new Audio(output.audioUrl);
+    }
+
+    if (typeof output?.url === 'string') {
+      return new Audio(output.url);
+    }
+
+    return null;
   }
 
   async _groqTTS(text, onStart, onEnd) {
@@ -162,11 +251,18 @@ class VoiceEngine {
   stopSpeaking() {
     try { this.currentSource?.stop(); } catch {}
     this.currentSource = null;
+    try {
+      if (this.currentAudioEl) {
+        this.currentAudioEl.pause();
+        this.currentAudioEl.currentTime = 0;
+      }
+    } catch {}
+    this.currentAudioEl = null;
     try { window.speechSynthesis?.cancel(); } catch {}
   }
 
   get isSpeaking() {
-    return !!this.currentSource || (window.speechSynthesis?.speaking ?? false);
+    return !!this.currentSource || !!this.currentAudioEl || (window.speechSynthesis?.speaking ?? false);
   }
 }
 

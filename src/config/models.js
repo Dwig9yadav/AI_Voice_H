@@ -3,6 +3,8 @@
 // ============================================================
 
 export const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
+export const RUNANYWHERE_ENABLED = import.meta.env.VITE_RUNANYWHERE_ENABLED !== 'false';
+export const RUNANYWHERE_PREFER_LOCAL = import.meta.env.VITE_RUNANYWHERE_PREFER_LOCAL !== 'false';
 
 export const MODELS = {
   COMPLEX: 'moonshotai/kimi-k2-instruct',
@@ -17,6 +19,9 @@ export const MODELS = {
   STT_FAST: 'whisper-large-v3-turbo',
   TTS_EN: 'playai-tts',
   TTS_AR: 'playai-tts-arabic',
+  LOCAL_CHAT: 'runanywhere/local-llm',
+  LOCAL_STT: 'runanywhere/local-stt',
+  LOCAL_TTS: 'runanywhere/local-tts',
 };
 
 export const TTS_VOICES = {

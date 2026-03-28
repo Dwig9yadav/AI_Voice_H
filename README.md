@@ -283,6 +283,25 @@ VITE_GROQ_API_KEY=your_key_here
 
 Then consume with `import.meta.env.VITE_GROQ_API_KEY`.
 
+### RunAnywhere local runtime
+
+The app now auto-detects RunAnywhere and can prefer fully local browser inference for STT, LLM, and TTS.
+
+Configure with environment flags:
+
+```bash
+# Enable RunAnywhere integration (default: true)
+VITE_RUNANYWHERE_ENABLED=true
+
+# Prefer local browser inference when available (default: true)
+VITE_RUNANYWHERE_PREFER_LOCAL=true
+```
+
+Behavior:
+
+- If RunAnywhere is available in the browser, ROSS prefers local STT/LLM/TTS.
+- If local runtime is unavailable, ROSS automatically falls back to Groq + browser speech synthesis.
+
 ---
 
 ## Run and build

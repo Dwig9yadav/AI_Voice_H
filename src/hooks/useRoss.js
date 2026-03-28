@@ -39,6 +39,7 @@ import { actionEngine }      from '../engines/ActionEngine.js';
 import { emotionEngine }     from '../engines/EmotionEngine.js';
 import { performanceEngine } from '../engines/PerformanceEngine.js';
 import { wakeWordEngine }    from '../engines/WakeWordEngine.js';
+import { runAnywhereEngine } from '../engines/RunAnywhereEngine.js';
 import { GROQ_API_KEY, AI_MODES } from '../config/models.js';
 
 // ── § 0  CONSTANTS ────────────────────────────────────────────
@@ -214,12 +215,17 @@ export function useRoss() {
         nlpEngine.setApiKey(GROQ_API_KEY);
 
         // Parallel init: DB + NLP + device profile
-        const [, , profile] = await Promise.all([
+        const [, , profile, localRuntime] = await Promise.all([
           memoryEngine.init(),
           nlpEngine.init(),
           performanceEngine.detect(),
+          runAnywhereEngine.init({ preferLocal: true }),
         ]);
         setDeviceProfile(profile);
+
+        // Prefer fully local pipeline when RunAnywhere is available.
+        llmEngine.setLocalInference(runAnywhereEngine.shouldUseLocalLLM());
+        voiceEngine.setPreferLocalSpeech(runAnywhereEngine.shouldUseLocalSTT() || runAnywhereEngine.shouldUseLocalTTS());
 
         const stats = await memoryEngine.getStats();
         setMemStats(stats);
@@ -248,8 +254,11 @@ export function useRoss() {
         const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
         const memCount = stats.namedMemories || 0;
         const memNote  = memCount > 0 ? ` I remember **${memCount}** thing${memCount > 1 ? 's' : ''} about you.` : '';
+        const runtimeNote = localRuntime?.available
+          ? ' Local AI runtime detected.'
+          : ' Cloud runtime active.';
         _addMsg({
-          role: 'assistant', content: `🌌 ${greeting}! ROSS v2.0 online — all systems nominal.${memNote} How can I help?`,
+          role: 'assistant', content: `🌌 ${greeting}! ROSS v2.0 online — all systems nominal.${runtimeNote}${memNote} How can I help?`,
           mode: 'system', emotion: 'neutral', model: 'system', keep: true,
         });
 
@@ -834,6 +843,8 @@ export function useRoss() {
   const updateApiKey = useCallback((key) => {
     groqClient.setApiKey(key);
     nlpEngine.setApiKey(key);
+    llmEngine.setLocalInference(runAnywhereEngine.shouldUseLocalLLM());
+    voiceEngine.setPreferLocalSpeech(runAnywhereEngine.shouldUseLocalSTT() || runAnywhereEngine.shouldUseLocalTTS());
     setApiKeyState(key);
   }, []);
 
