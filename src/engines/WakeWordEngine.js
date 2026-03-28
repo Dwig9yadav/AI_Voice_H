@@ -10,6 +10,8 @@ class WakeWordEngine {
   constructor() {
     this.recognition = null;
     this.isRunning = false;
+    this.shouldListen = false;
+    this.cooldownUntil = 0;
     this.onWake = null;       // callback(commandText) when wake word detected
     this.onError = null;
     this.restartTimer = null;
@@ -22,15 +24,21 @@ class WakeWordEngine {
       onError?.('Wake word not supported in this browser. Use Chrome or Edge.');
       return false;
     }
-    if (this.isRunning) return true;
+    if (this.isRunning || this.shouldListen) return true;
 
     this.onWake = onWake;
     this.onError = onError;
+    this.shouldListen = true;
     this._startRecognition();
     return true;
   }
 
   _startRecognition() {
+    if (!this.shouldListen) return;
+
+    // Ensure only one recognition instance exists at a time.
+    try { this.recognition?.stop(); } catch {}
+
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     this.recognition = new SR();
     this.recognition.continuous = true;
@@ -43,6 +51,8 @@ class WakeWordEngine {
     };
 
     this.recognition.onresult = (event) => {
+      if (!this.shouldListen || Date.now() < this.cooldownUntil) return;
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         // Check all alternatives
@@ -55,9 +65,12 @@ class WakeWordEngine {
             // Clean up common artifacts
             command = command.replace(/^[,.\s]+/, '').trim();
             this.onWake?.(command || '');
-            // Brief pause before restarting to avoid echo
-            this.stop();
-            setTimeout(() => this._startRecognition(), 1500);
+
+            // Brief pause before restarting to avoid self-trigger from TTS/audio echo.
+            this.cooldownUntil = Date.now() + 1400;
+            this.isRunning = false;
+            try { this.recognition?.stop(); } catch {}
+            this._scheduleRestart(1500);
             return;
           }
         }
@@ -72,6 +85,7 @@ class WakeWordEngine {
       }
       if (e.error === 'not-allowed') {
         this.isRunning = false;
+        this.shouldListen = false;
         this.onError?.('Microphone permission denied. Please allow mic access.');
         return;
       }
@@ -80,7 +94,8 @@ class WakeWordEngine {
     };
 
     this.recognition.onend = () => {
-      if (this.isRunning) {
+      this.isRunning = false;
+      if (this.shouldListen) {
         // Auto-restart to keep listening continuously
         this._scheduleRestart(200);
       }
@@ -96,12 +111,14 @@ class WakeWordEngine {
   _scheduleRestart(ms) {
     clearTimeout(this.restartTimer);
     this.restartTimer = setTimeout(() => {
-      if (this.isRunning) this._startRecognition();
+      if (this.shouldListen) this._startRecognition();
     }, ms);
   }
 
   stop() {
+    this.shouldListen = false;
     this.isRunning = false;
+    this.cooldownUntil = 0;
     clearTimeout(this.restartTimer);
     try { this.recognition?.stop(); } catch {}
     this.recognition = null;
