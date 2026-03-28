@@ -822,6 +822,58 @@ function resolveHandle(handle, platform) {
 }
 
 // ── § 9  RELIABLE TAB OPENER ─────────────────────────────────
+
+function resolveGithubProfileTarget(input = '') {
+  const text = input.trim();
+  if (!text) return null;
+
+  const directHandle = text.match(/^@([a-z0-9-]{1,39})$/i);
+  if (directHandle) {
+    return {
+      type: 'direct',
+      url: `https://github.com/${directHandle[1]}`,
+      label: `GitHub @${directHandle[1]}`,
+    };
+  }
+
+  const patterns = [
+    /^(?:the\s+)?profile\s+(?:of|for)\s+(.+?)\s+(?:on\s+)?github$/i,
+    /^github\s+profile\s+(?:of|for)\s+(.+)$/i,
+    /^(.+?)\s+github\s+profile$/i,
+    /^(?:github\s+user|github\s+account)\s+(.+)$/i,
+  ];
+
+  let query = '';
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]) {
+      query = m[1].trim();
+      break;
+    }
+  }
+
+  if (!query) return null;
+
+  query = query
+    .replace(/(?:'s|’s)\s+profile$/i, '')
+    .replace(/\s+(?:on\s+github)$/i, '')
+    .trim();
+
+  const maybeHandle = query.replace(/^@/, '').trim();
+  if (/^[a-z0-9-]{1,39}$/i.test(maybeHandle) && !/\s/.test(maybeHandle)) {
+    return {
+      type: 'direct',
+      url: `https://github.com/${maybeHandle}`,
+      label: `GitHub @${maybeHandle}`,
+    };
+  }
+
+  return {
+    type: 'search',
+    url: `https://github.com/search?q=${encodeURIComponent(query)}&type=users`,
+    label: `GitHub users: ${query}`,
+  };
+}
 // Uses invisible <a> click instead of window.open so it works
 // even when called deep inside async/await chains.
 // window.open() is blocked by popup-blockers in async context;
@@ -873,6 +925,12 @@ class ActionEngine {
     if (handleMatch) {
       const url = resolveHandle(handleMatch[1], handleMatch[2] || 'twitter');
       if (url) return this._open(url, `@${handleMatch[1]}`);
+    }
+
+    // ── Layer 0.5: GitHub profile phrase resolver ────────────
+    const ghTarget = resolveGithubProfileTarget(raw);
+    if (ghTarget) {
+      return this._open(ghTarget.url, ghTarget.label);
     }
 
     // ── Layer 1: Exact hardcoded map ────────────────────────

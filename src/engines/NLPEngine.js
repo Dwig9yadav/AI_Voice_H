@@ -366,7 +366,7 @@ const MULTILINGUAL_COMMAND_RULES=[
   [/\b(?:y|et|und|e|dan|и|और|और\s+भी|그리고|ثم|و)\b/gi,' and '],
 
   // Action verbs: open / navigate
-  [/\b(?:abrir|abre|abreme|ouvrir|ouvre|oeffnen|öffnen|apri|aprire|buka|otkroi|открой|открыть|khol|खोलो|खोलना|ifta[hḥ]|افتح)\b/gi,' open '],
+  [/\b(?:abrir|abre|abreme|ouvrir|ouvre|oeffnen|öffnen|apri|aprire|buka|otkroi|открой|открыть|khol|खोलो|खोलना|दिखाओ|दिखाना|ifta[hḥ]|افتح|اعرض)\b/gi,' open '],
   [/(?:打开|開啟|开启|開く|열어|열기)/g,' open '],
   [/\b(?:ir\s+a|ve\s+a|aller\s+[aà]|geh\s+zu|vai\s+a|ir\s+para|pergi\s+ke|перейди\s+на|जाओ|اذهب\s+إلى)\b/gi,' go to '],
   [/(?:前往|去|移動到|이동해|اذهب)/g,' go to '],
@@ -376,7 +376,7 @@ const MULTILINGUAL_COMMAND_RULES=[
   [/(?:播放|放歌|再生|재생|들려줘|播放一下)/g,' play '],
   [/\b(?:escuchar|ecouter|écouter|ascolta|ouvir|dengar|слушай|смотреть|देखो|देखना|مشاهدة|شاهد)\b/gi,' listen to '],
   [/(?:聽|听|聴く|보기|봐줘|देख)/g,' listen to '],
-  [/\b(?:buscar|busca|rechercher|cherche|suchen|suche|cerca|procurar|cari|искать|найди|खोजो|खोजना|ابحث)\b/gi,' search '],
+  [/\b(?:buscar|busca|rechercher|cherche|suchen|suche|cerca|procurar|cari|искать|найди|खोजो|खोजना|ढूंढो|ढूँढो|ابحث)\b/gi,' search '],
   [/(?:搜索|搜尋|探す|찾아|검색)/g,' search '],
   [/\b(?:encontrar|finde|trouve|trova|achar|найти|ढूंढो|اعثر)\b/gi,' find '],
 
@@ -405,9 +405,72 @@ const MULTILINGUAL_COMMAND_RULES=[
   [/(?:スパотиファイ|스포티파이|سبوتيفاي|спотифай)/gi,' spotify '],
 ];
 
+const COMMAND_TRANSLATION_FALLBACK={
+  hi:[
+    [/\b(?:बजाओ|चलाओ|चलाना|सुनाओ|सुनना)\b/g,' play '],
+    [/\b(?:खोलो|खोलना|दिखाओ|दिखाना)\b/g,' open '],
+    [/\b(?:ढूंढो|ढूँढो|खोजो|खोजना|सर्च)\b/g,' search '],
+    [/\b(?:यूट्यूब|यू-ट्यूब)\b/g,' youtube '],
+    [/\b(?:स्पॉटिफाई|स्पॉटिफ़ाई)\b/g,' spotify '],
+    [/\b(?:पे|पर|में)\b/g,' on '],
+  ],
+  ar:[
+    [/\b(?:شغل|شغّل|تشغيل|استمع|اسمع)\b/g,' play '],
+    [/\b(?:افتح|اذهب|اعرض)\b/g,' open '],
+    [/\b(?:ابحث|دور|فتش)\b/g,' search '],
+    [/\b(?:يوتيوب)\b/g,' youtube '],
+    [/\b(?:سبوتيفاي)\b/g,' spotify '],
+    [/\b(?:على|في)\b/g,' on '],
+  ],
+  es:[
+    [/\b(?:reproduce|reproducir|pon|poner|escuchar|escucha)\b/gi,' play '],
+    [/\b(?:abrir|abre|abreme|ir\s+a)\b/gi,' open '],
+    [/\b(?:buscar|busca|encuentra|encontrar)\b/gi,' search '],
+  ],
+  fr:[
+    [/\b(?:joue|lance|écoute|ecoute)\b/gi,' play '],
+    [/\b(?:ouvrir|ouvre|aller\s+à|aller\s+a)\b/gi,' open '],
+    [/\b(?:chercher|cherche|trouve)\b/gi,' search '],
+  ],
+  de:[
+    [/\b(?:spiele|abspielen|höre|hoere)\b/gi,' play '],
+    [/\b(?:öffne|oeffne|geh\s+zu)\b/gi,' open '],
+    [/\b(?:suche|finden|finde)\b/gi,' search '],
+  ],
+  ru:[
+    [/\b(?:включи|играй|слушай|воспроизведи)\b/gi,' play '],
+    [/\b(?:открой|открыть|перейди)\b/gi,' open '],
+    [/\b(?:найди|искать|поиск)\b/gi,' search '],
+  ],
+  zh:[
+    [/(?:播放|放|听|聽)/g,' play '],
+    [/(?:打开|開啟|开启|去)/g,' open '],
+    [/(?:搜索|搜尋|查找|找)/g,' search '],
+  ],
+  ja:[
+    [/(?:再生|聞いて|聴いて|かけて)/g,' play '],
+    [/(?:開いて|開く|行って)/g,' open '],
+    [/(?:検索|探して)/g,' search '],
+  ],
+  ko:[
+    [/(?:재생|틀어줘|들려줘)/g,' play '],
+    [/(?:열어|열기|이동해)/g,' open '],
+    [/(?:검색|찾아)/g,' search '],
+  ],
+};
+
 function canonicalizeCommandLanguage(text=''){
   let out=` ${text} `;
   for(const [re,replacement] of MULTILINGUAL_COMMAND_RULES) out=out.replace(re,replacement);
+  return out.replace(/\s+/g,' ').trim();
+}
+
+function translateCommandToEnglish(text='',language='en'){
+  if(!text?.trim()||language==='en')return text;
+  const rules=COMMAND_TRANSLATION_FALLBACK[language]||[];
+  if(!rules.length)return text;
+  let out=` ${text} `;
+  for(const [re,replacement] of rules)out=out.replace(re,replacement);
   return out.replace(/\s+/g,' ').trim();
 }
 
@@ -418,6 +481,75 @@ function normalizeMediaQuery(text=''){
     .replace(FILLER_SUFFIX_RE,'')
     .replace(/[?.!]+$/,'')
     .trim();
+}
+
+const UNIVERSAL_ACTION_RE=/\b(open|go\s+to|play|listen\s+to|watch|stream|search|find|translate|remember|maps?|directions?|route|navigate|profile|account|user)\b/i;
+const UNIVERSAL_SEARCH_RE=/\b(search|find|look\s*up|google|browse)\b/i;
+const UNIVERSAL_MAPS_RE=/\b(maps?|directions?|route|navigate|get\s+directions)\b/i;
+const UNIVERSAL_PROFILE_RE=/\b(profile|account|user|id|handle)\b/i;
+
+function cleanCommandQuery(text=''){
+  return text
+    .replace(/^\s*(?:please\s+)?(?:open|go\s+to|play|listen\s+to|watch|stream|search\s+for|search|find|show\s+me|take\s+me\s+to)\s+/i,'')
+    .replace(/\b(?:on|in)\s+(?:spotify|youtube|yt|github|google\s+maps|maps?)\b/gi,'')
+    .replace(/\b(?:for\s+me|for\s+us|please|pls|right\s+now|now)\b/gi,'')
+    .replace(/[?.!]+$/,'')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+function inferUniversalIntent({resolved='',original='',entities={},queryType='informational',dialogueAct='INFORM'}){
+  const lower=resolved.toLowerCase();
+  const services=new Set((entities.services||[]).map(s=>s.toLowerCase()));
+  const hasActionCue=UNIVERSAL_ACTION_RE.test(lower)||queryType==='transactional'||dialogueAct==='COMMAND'||dialogueAct==='REQUEST';
+  if(!hasActionCue)return null;
+
+  if(entities.urls?.length){
+    return{intent:'NAVIGATION',slots:{target:entities.urls[0]},confidence:0.9,reason:'url_target'};
+  }
+
+  const platform=services.has('spotify')?'spotify'
+    :(services.has('youtube')||services.has('yt'))?'youtube'
+    :services.has('soundcloud')?'soundcloud'
+    :null;
+
+  if(platform&&/\b(play|listen\s+to|watch|stream|song|music|track|playlist|video|search|find)\b/i.test(lower)){
+    const query=normalizeMediaQuery(cleanCommandQuery(resolved));
+    if(query&&query.length>=2){
+      return{intent:'PLATFORM_PLAY',slots:{platform,query},confidence:0.84,reason:'platform_media'};
+    }
+  }
+
+  if((services.has('github')||/\bgithub\b/i.test(lower))&&UNIVERSAL_PROFILE_RE.test(lower)){
+    const m=original.match(/(?:profile|account|user)\s+(?:of|for)?\s*([^?.!]+)/i);
+    const candidate=(m?.[1]||'').replace(/\s+on\s+github$/i,'').trim();
+    if(candidate){
+      return{intent:'NAVIGATION',slots:{target:`profile of ${candidate} on github`},confidence:0.86,reason:'github_profile_phrase'};
+    }
+    return{intent:'NAVIGATION',slots:{target:'github'},confidence:0.75,reason:'github_profile_generic'};
+  }
+
+  if(UNIVERSAL_MAPS_RE.test(lower)){
+    let query=lower.replace(/^.*?(?:maps?|directions?|route|navigate)\s*/i,'');
+    query=query.replace(/^to\s+/i,'').replace(/[?.!]+$/,'').trim();
+    if(query.length>=2)return{intent:'MAPS',slots:{query},confidence:0.8,reason:'maps_route'};
+  }
+
+  if(UNIVERSAL_SEARCH_RE.test(lower)){
+    const query=cleanCommandQuery(resolved);
+    if(query.length>=2){
+      if(services.has('github'))return{intent:'GITHUB_SEARCH',slots:{query},confidence:0.78,reason:'github_search'};
+      if(services.has('youtube'))return{intent:'YOUTUBE_SEARCH',slots:{query},confidence:0.78,reason:'youtube_search'};
+      return{intent:'SEARCH',slots:{query},confidence:0.72,reason:'generic_search'};
+    }
+  }
+
+  if(/^(?:open|go\s+to|visit|launch|show\s+me)\b/i.test(lower)){
+    const target=cleanCommandQuery(resolved);
+    if(target.length>=2)return{intent:'NAVIGATION',slots:{target},confidence:0.76,reason:'generic_navigation'};
+  }
+
+  return null;
 }
 
 function preprocess(raw){
@@ -1056,6 +1188,8 @@ class NLPEngine{
 
     // Stage 2: Linguistic analysis
     const language=detectLanguage(resolved);
+    const translatedResolved=translateCommandToEnglish(resolved,language);
+    const candidateTexts=translatedResolved&&translatedResolved!==resolved?[resolved,translatedResolved]:[resolved];
     const tokens=tokenize(resolved);
     const pos=posTag(tokens);
     const negation=detectNegationScope(tokens);
@@ -1078,6 +1212,7 @@ class NLPEngine{
       queryType,dialogueAct,multiIntent,technicalContent,temporal,
       preprocessed:preprocessed!==rawText.trim()?preprocessed:null,
       resolved:resolved!==preprocessed?resolved:null,
+      translatedCommand:translatedResolved!==resolved?translatedResolved:null,
       implicit:false,clarificationScore:0,
       predictedNextIntents:ctx.predictedNextIntents,ctx,raw:rawText,_stages:{},
     };
@@ -1086,7 +1221,17 @@ class NLPEngine{
     const sorted=[...this.intents].sort((a,b)=>(b.priority||5)-(a.priority||5));
     for(const def of sorted){
       let matched=false;
-      for(const pattern of(def.patterns||[]))if(pattern.test(resolved)){matched=true;break;}
+      let matchedText=resolved;
+      for(const textCandidate of candidateTexts){
+        for(const pattern of(def.patterns||[])){
+          if(pattern.test(textCandidate)){
+            matched=true;
+            matchedText=textCandidate;
+            break;
+          }
+        }
+        if(matched)break;
+      }
       if(!matched)continue;
 
       result.intent=def.name;
@@ -1098,7 +1243,7 @@ class NLPEngine{
 
       // Stage 7: Slot extraction
       if(def.extract){
-        const slots=def.extract(resolved);
+        const slots=def.extract(matchedText);
         if(slots){
           result.slots=slots;
           result.entities.target=slots.target||slots.query||slots.mode||slots.fact||slots.topic||slots.name||null;
@@ -1129,8 +1274,29 @@ class NLPEngine{
       return result;
     }
 
+    // ── Stage 6B: Universal command bridge ─────────────────
+    const universal=inferUniversalIntent({resolved:translatedResolved||resolved,original,entities,result,queryType,dialogueAct,context:ctx});
+    if(universal){
+      result._stages.stageB={reason:universal.reason,confidence:universal.confidence};
+      result.intent=universal.intent;
+      result.group=INTENTS.find(d=>d.name===universal.intent)?.group||'general';
+      result.slots={...result.slots,...(universal.slots||{})};
+      result.entities.target=result.slots.target||result.slots.query||result.entities.target||null;
+      result.confidence=calibrateConfidence({
+        patternScore:0.75,semanticScore:0.35,
+        contextScore:ctx.isFollowUp?0.75:0.55,
+        negated:negation.hasNegation,multiIntent:!!multiIntent,
+      });
+      result.confidence=Math.max(result.confidence,universal.confidence||0.7);
+      result.complexity=scoreComplexity(resolved,result.intent);
+      result.clarificationScore=this.context.clarificationScore(result.intent,result.slots,result.confidence);
+      this.context.add({...result,text:resolved});
+      if(rawText.length<60)this._cacheSet(cacheKey,result);
+      return result;
+    }
+
     // ── Stage 6C: Semantic attention scoring ────────────────
-    const semanticMatch=getBestSemanticMatch(resolved);
+    const semanticMatch=getBestSemanticMatch(translatedResolved||resolved);
     if(semanticMatch&&semanticMatch.score>0.15){
       result._stages.stageC={match:semanticMatch.name,score:semanticMatch.score};
       result.intent=semanticMatch.name;
