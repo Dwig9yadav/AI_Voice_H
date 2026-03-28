@@ -24,12 +24,16 @@ class WakeWordEngine {
       onError?.('Wake word not supported in this browser. Use Chrome or Edge.');
       return false;
     }
-    if (this.isRunning || this.shouldListen) return true;
+    if (onWake) this.onWake = onWake;
+    if (onError) this.onError = onError;
 
-    this.onWake = onWake;
-    this.onError = onError;
+    // If already running, just keep callbacks updated.
+    if (this.isRunning) return true;
+
+    // Recover from "enabled but dead" state by forcing a restart.
     this.shouldListen = true;
-    this._startRecognition();
+    clearTimeout(this.restartTimer);
+    this._scheduleRestart(10);
     return true;
   }
 
@@ -93,6 +97,17 @@ class WakeWordEngine {
         this.onError?.('Microphone permission denied. Please allow mic access.');
         return;
       }
+      if (e.error === 'audio-capture') {
+        // Mic temporarily unavailable (device/busy) — retry with backoff.
+        this.isRunning = false;
+        this._scheduleRestart(1500);
+        return;
+      }
+      if (e.error === 'aborted' || e.error === 'network' || e.error === 'service-not-allowed') {
+        this.isRunning = false;
+        this._scheduleRestart(1200);
+        return;
+      }
       // Other errors — restart
       this._scheduleRestart(1000);
     };
@@ -126,6 +141,13 @@ class WakeWordEngine {
     clearTimeout(this.restartTimer);
     try { this.recognition?.stop(); } catch {}
     this.recognition = null;
+  }
+
+  ensureActive() {
+    if (!this.shouldListen) return false;
+    if (this.isRunning) return true;
+    this.start(this.onWake, this.onError);
+    return false;
   }
 
   get active() { return this.isRunning; }

@@ -223,6 +223,17 @@ export function useRoss() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Wake-word watchdog: recover silent recognizer stalls ─────
+  useEffect(() => {
+    if (!wakeWordEnabled) return;
+    const id = setInterval(() => {
+      // Avoid competing recognizers while active push-to-talk recording.
+      if (voiceEngine.isRecording) return;
+      wakeWordEngine.ensureActive();
+    }, 2200);
+    return () => clearInterval(id);
+  }, [wakeWordEnabled]);
+
   // ── § 2  BOOT SEQUENCE ──────────────────────────────────────
   useEffect(() => {
     async function boot() {
