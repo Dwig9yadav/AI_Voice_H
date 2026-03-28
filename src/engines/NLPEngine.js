@@ -353,12 +353,80 @@ function resolveImplicitIntent(text){
 const CONV_PREFIX_RE=/^(?:(?:hey|ok|okay|hi|yo|ross)[,.]?\s*)?(?:(?:can|could|will|would|may)\s+you\s+(?:please\s+)?|please\s+|(?:i\s+(?:would\s+like|want|need|am\s+trying|am\s+going)\s+to\s+)|(?:could\s+you\s+(?:please\s+)?))?/i;
 const FILLER_SUFFIX_RE=/\s*(?:for\s+me|please|right\s+now|now|okay|ok|thanks|thank\s+you|if\s+you\s+can|will\s+you|can\s+you|asap|immediately)[.!?,]*$/i;
 
+// Multilingual command canonicalization layer.
+// It normalizes common command verbs/connectors from multiple languages
+// into a compact English command grammar used by downstream intent patterns.
+const MULTILINGUAL_COMMAND_RULES=[
+  // Polite words / prefixes
+  [/\b(?:por\s+favor|s['’]?il\s+vous\s+pla[iî]t|s['’]?il\s+te\s+pla[iî]t|bitte|per\s+favore|tolong|пожалуйста|कृपया)\b/gi,' please '],
+  [/\b(?:puedes|puede|podrias|podría|podes|pode|pourrais|peux\s*tu|pouvez\s*vous|kannst\s+du|k[oö]nnen\s+sie|puoi|pode\s+v[oô]c[eê])\b/gi,' can you '],
+
+  // Connectors for multi-step commands
+  [/\b(?:y\s+luego|y\s+despu[eé]s|y\s+entonces|et\s+puis|und\s+dann|e\s+poi|e\s+depois|dan\s+lalu|и\s+затем|और\s+फिर|그리고\s+나서|ثم\s+بعد\s+ذلك|然后)\b/gi,' and then '],
+  [/\b(?:y|et|und|e|dan|и|और|और\s+भी|그리고|ثم|و)\b/gi,' and '],
+
+  // Action verbs: open / navigate
+  [/\b(?:abrir|abre|abreme|ouvrir|ouvre|oeffnen|öffnen|apri|aprire|buka|otkroi|открой|открыть|khol|खोलो|खोलना|ifta[hḥ]|افتح)\b/gi,' open '],
+  [/(?:打开|開啟|开启|開く|열어|열기)/g,' open '],
+  [/\b(?:ir\s+a|ve\s+a|aller\s+[aà]|geh\s+zu|vai\s+a|ir\s+para|pergi\s+ke|перейди\s+на|जाओ|اذهب\s+إلى)\b/gi,' go to '],
+  [/(?:前往|去|移動到|이동해|اذهب)/g,' go to '],
+
+  // Action verbs: play/listen/watch/search/find
+  [/\b(?:reproducir|pon|poner|playea|lance|lancer|joue|spielen|spiel|riproduci|toca|tocar|putar|dengar|слушать|играй|играть|suno|सुनो|चलाओ|شغ(?:ل|ِّل)|استمع)\b/gi,' play '],
+  [/(?:播放|放歌|再生|재생|들려줘|播放一下)/g,' play '],
+  [/\b(?:escuchar|ecouter|écouter|ascolta|ouvir|dengar|слушай|смотреть|देखो|देखना|مشاهدة|شاهد)\b/gi,' listen to '],
+  [/(?:聽|听|聴く|보기|봐줘|देख)/g,' listen to '],
+  [/\b(?:buscar|busca|rechercher|cherche|suchen|suche|cerca|procurar|cari|искать|найди|खोजो|खोजना|ابحث)\b/gi,' search '],
+  [/(?:搜索|搜尋|探す|찾아|검색)/g,' search '],
+  [/\b(?:encontrar|finde|trouve|trova|achar|найти|ढूंढो|اعثر)\b/gi,' find '],
+
+  // Utility verbs
+  [/\b(?:traducir|traduire|uebersetzen|übersetzen|tradurre|traduzir|menerjemahkan|перевести|अनुवाद|ترجم)\b/gi,' translate '],
+  [/(?:翻译|翻譯|번역)/g,' translate '],
+  [/\b(?:recordar|recuerda|souviens|merken|ricorda|lembrar|ingat|запомни|याद\s+रखो|تذكر)\b/gi,' remember '],
+  [/(?:记住|記住|기억해)/g,' remember '],
+
+  // Time/date/weather/map intents
+  [/\b(?:hora|heure|uhrzeit|ora|hor[áa]rio|waktu|время|समय|الوقت)\b/gi,' time '],
+  [/(?:时间|時間|時刻|시간)/g,' time '],
+  [/\b(?:fecha|date|datum|data|tanggal|дата|तारीख|التاريخ)\b/gi,' date '],
+  [/(?:日期|日付|날짜)/g,' date '],
+  [/\b(?:clima|meteo|weather|wetter|tempo|cuaca|погода|मौसम|الطقس)\b/gi,' weather '],
+  [/(?:天气|天氣|날씨)/g,' weather '],
+  [/\b(?:mapa|carte|karte|mappa|mapa|peta|карта|नक्शा|خريطة)\b/gi,' maps '],
+  [/(?:地图|地圖|지도)/g,' maps '],
+
+  // Prepositions around platforms
+  [/\b(?:en|sur|auf|su|no|na|em|di)\s+(spotify|youtube|yt|github|google)\b/gi,' on $1 '],
+
+  // Platform aliases
+  [/\byoutube\s+music\b/gi,' youtube music '],
+  [/(?:ยูทูบ|ютуб|يوتوب)/gi,' youtube '],
+  [/(?:スパотиファイ|스포티파이|سبوتيفاي|спотифай)/gi,' spotify '],
+];
+
+function canonicalizeCommandLanguage(text=''){
+  let out=` ${text} `;
+  for(const [re,replacement] of MULTILINGUAL_COMMAND_RULES) out=out.replace(re,replacement);
+  return out.replace(/\s+/g,' ').trim();
+}
+
+function normalizeMediaQuery(text=''){
+  return text
+    .replace(/\s+(?:on|in)\s+(?:it|this|that|there|here|spotify|youtube|yt|apple\s+music|soundcloud|deezer|tidal)\b[.!?,]*$/i,'')
+    .replace(/\s+(?:for\s+me|for\s+us|please|pls)\b[.!?,]*$/i,'')
+    .replace(FILLER_SUFFIX_RE,'')
+    .replace(/[?.!]+$/,'')
+    .trim();
+}
+
 function preprocess(raw){
   if(!raw?.trim())return{text:'',original:raw};
   let text=raw.trim();
   const original=text;
   try{text=text.normalize('NFKC');}catch{}
   text=text.replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"');
+  text=canonicalizeCommandLanguage(text);
   // Multi-word spell corrections first
   for(const[typo,fix]of Object.entries(MULTI_WORD_SPELL))
     text=text.replace(new RegExp(typo,'gi'),fix);
@@ -510,11 +578,11 @@ const INTENTS=[
    slots:['query','platform'],
    extract:(text)=>{
      let m=text.match(/open\s+(spotify|youtube|yt)\s+(?:and|then)\s+(?:play|listen\s+to|search\s+for|watch|stream)\s+(.+)/i);
-     if(m)return{platform:m[1].toLowerCase().replace('yt','youtube'),query:m[2].replace(FILLER_SUFFIX_RE,'').trim()};
+     if(m)return{platform:m[1].toLowerCase().replace('yt','youtube'),query:normalizeMediaQuery(m[2])};
      m=text.match(/(?:play|listen\s+to|stream|hear|blast|crank|bump)\s+(.+?)\s+(?:on|in)\s+(spotify|youtube|yt)/i);
-     if(m)return{query:m[1].trim(),platform:m[2].toLowerCase().replace('yt','youtube')};
+     if(m)return{query:normalizeMediaQuery(m[1]),platform:m[2].toLowerCase().replace('yt','youtube')};
      m=text.match(/search\s+(?:for\s+)?(.+?)\s+on\s+(spotify|youtube|yt)/i);
-     if(m)return{query:m[1].trim(),platform:m[2].toLowerCase().replace('yt','youtube')};
+     if(m)return{query:normalizeMediaQuery(m[1]),platform:m[2].toLowerCase().replace('yt','youtube')};
      return null;
    }},
 
@@ -523,7 +591,7 @@ const INTENTS=[
    slots:['query'],
    extract:(text)=>{
      const m=text.match(/^(?:play|listen\s+to|stream|put\s+on|blast|crank)\s+(.+)/i);
-     return m?{query:m[1].replace(FILLER_SUFFIX_RE,'').replace(/[?.!]+$/,'').trim()}:null;
+     return m?{query:normalizeMediaQuery(m[1])}:null;
    }},
 
   // NAVIGATION
@@ -543,7 +611,7 @@ const INTENTS=[
    slots:['query'],
    extract:(text)=>{
      const m=text.match(/(?:search\s+youtube|youtube\s+search|play\s+on\s+youtube|watch\s+on\s+youtube|search\s+on\s+youtube|find\s+on\s+youtube|look\s+up\s+on\s+youtube)\s+(.+)/i);
-     return m?{query:m[1].replace(FILLER_SUFFIX_RE,'').trim()}:null;
+     return m?{query:normalizeMediaQuery(m[1])}:null;
    }},
 
   {name:'SEARCH',priority:8,complexity:'simple',group:'browser',

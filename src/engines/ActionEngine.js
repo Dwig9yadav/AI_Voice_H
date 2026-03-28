@@ -1052,6 +1052,14 @@ class ActionEngine {
       .trim();
   }
 
+  _cleanMediaQuery(query = '') {
+    return query
+      .replace(/\s+(?:on|in)\s+(?:it|this|that|there|here|spotify|youtube|yt|apple\s+music|soundcloud|deezer|tidal)\b[.!?,]*$/i, '')
+      .replace(/\s+(?:for\s+me|for\s+us|please|pls)\b[.!?,]*$/i, '')
+      .replace(/[?.!]+$/, '')
+      .trim();
+  }
+
   parseCompoundCommand(text) {
     const raw = this._stripPolitePrefix(text?.trim() || '');
     if (!raw) return null;
@@ -1083,7 +1091,7 @@ class ActionEngine {
 
       const mediaM = part.match(/(?:^|\b)(?:play|listen\s+to|listen|watch|stream|search\s+for|search|find)\s+(.+?)(?:\s+on\s+(spotify|youtube|yt|apple\s+music|soundcloud|deezer|tidal))?$/i);
       if (mediaM) {
-        const query = mediaM[1].replace(/[?.!]+$/, '').trim();
+        const query = this._cleanMediaQuery(mediaM[1]);
         const platform = this._normalizePlatform(mediaM[2] || activePlatform || 'youtube');
         if (query) {
           steps.push({ type: 'media', platform, query });
@@ -1204,19 +1212,19 @@ class ActionEngine {
 
     // "play X on spotify"
     let m = lower.match(/(?:play|listen\s+to|stream|hear|blast|queue|put\s+on)\s+(.+?)\s+on\s+(spotify|youtube|yt|apple\s+music|soundcloud|deezer|tidal)/i);
-    if (m) return { platform: m[2].replace('yt','youtube').replace(/\s+/g,''), query: m[1].trim() };
+    if (m) return { platform: m[2].replace('yt','youtube').replace(/\s+/g,''), query: this._cleanMediaQuery(m[1]) };
 
     // "open spotify and play X"
     m = lower.match(/open\s+(spotify|youtube)\s+(?:and|then)\s+(?:play|search|listen\s+to|find)\s+(.+)/i);
-    if (m) return { platform: m[1], query: m[2].trim() };
+    if (m) return { platform: m[1], query: this._cleanMediaQuery(m[2]) };
 
     // "search for X on youtube"
     m = lower.match(/search\s+(?:for\s+)?(.+?)\s+on\s+(spotify|youtube|yt|apple\s+music)/i);
-    if (m) return { platform: m[2].replace('yt','youtube'), query: m[1].trim() };
+    if (m) return { platform: m[2].replace('yt','youtube'), query: this._cleanMediaQuery(m[1]) };
 
     // bare "play X"
     m = lower.match(/^(?:play|watch)\s+(.+)/i);
-    if (m) return { platform: 'youtube', query: m[1].replace(/[?.!]+$/,'').trim() };
+    if (m) return { platform: 'youtube', query: this._cleanMediaQuery(m[1]) };
 
     return null;
   }
@@ -1255,7 +1263,7 @@ class ActionEngine {
       case 'PLATFORM_PLAY':
       case 'PLAY_MUSIC': {
         const platform = (slots.platform || '').toLowerCase();
-        const q = slots.query || query;
+        const q = this._cleanMediaQuery(slots.query || query);
         if (!q) {
           // No query — just open the platform
           if (platform === 'spotify') return this.openWebsite('spotify');
